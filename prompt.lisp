@@ -62,10 +62,29 @@
        unless (string= (get 'name prompt) "default")
      do (format t "~A: ~A~%" (get 'name prompt) (get 'desc prompt))))
 
+(defun parse-args (s)
+  (let ((cmd (car (split " " s))))
+    (labels ((r1 (s)
+               (when (consp s)
+                 (let ((f (car s)))
+                   (if (string= "\"" f)
+                       (r2 (cdr s) "")
+                       (cons f (r1 (cdr s)))))))
+             (r2 (s l)
+               (when (consp s)
+                 (let ((f (car s)))
+                   (if (string= "\"" f)
+                       (cons (string-trim " " l) (r1 (cdr s)))
+                       (r2 (cdr s) (concatenate 'string l " " f)))))))
+      (values cmd 
+              (remove-if #'(lambda (x) (string= "" x))
+                         (r1 (split " "
+                                    (regex-replace-all "\""
+                                                       (subseq s (length cmd))
+                                                       " \" "))))))))
+
 (defun interpret-command (command prompts)
-  (let* ((allargs (split " " command))
-         (cmd (first allargs))
-         (args (cdr allargs)))
+  (multiple-value-bind (cmd args) (parse-args command)
     (unless (if (= 0 (length command))
                 t
                 (if (string= cmd (get 'helpname prompts))
@@ -77,13 +96,13 @@
                        when (and (>= (length cmd) l)
                                  (string= cmd (get 'name prompt)))
                        return (progn
-                                (setf (get 'args prompts) (split " " (string-trim " " (subseq command (length (get 'name prompt))))))
+                                (setf (get 'args prompts) args)
                                 (funcall (get 'handler prompt) (subseq command (length (get 'name prompt))) prompts command)
                                 t))))
       (loop for prompt in prompts
          when (string= "default" (get 'name prompt))
          do (progn
-              (setf (get 'args prompts) (split " " command))
+              (setf (get 'args prompts) (cons cmd args))
               (funcall (get 'handler prompt) command prompts command))))))
 
 (defun prompt (str prompts &key (helpname "h"))

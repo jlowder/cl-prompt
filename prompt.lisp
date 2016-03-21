@@ -1,26 +1,25 @@
 (in-package :cl-user)
 
 (defpackage :prompt
-  (:use :common-lisp :cl-ppcre)
+  (:use
+   :common-lisp
+   :cl-ppcre)
   (:export
    :result
    :end-prompt
    :poparg
-   :poparg1
-   :prompt-as
    :defprompt
    :defdefault
-   :prompt-line
-   :command
    :prompt))
 
 (in-package :prompt)
 
-(defmacro defprompt ((name desc prompts) &body body)
+(defmacro defprompt ((name desc prompts &optional argnames) &body body)
   (let ((sym (gensym)))
     `(let ((,sym (intern ,name)))
        (setf (get 'handler ,sym)
              #'(lambda (prompt-line prompts command)
+                 (declare (ignorable command prompt-line))
                  (labels ((end-prompt ()
                             (setf (get 'done prompts) t))
                           (prompt-as (str)
@@ -38,22 +37,30 @@
                                return arg
                                end
                                do
-                                 (setf (get 'args prompts) (prompt-as "ARG> "))))
+                                 (setf (get 'args prompts) (prompt-as (concatenate 'string (nextname prompts) "> ")))))
                           (poparg ()
                             (let ((res (poparg1)))
                               (setf (get 'args prompts) (cdr (get 'args prompts)))
+                              (setf (get 'anames prompts) (cdr (get 'anames prompts)))
                               res))
                           (result (v)
                             (setf (get 'result prompts) v)))
                    ,@body)))
        (setf (get 'name ,sym) ,name)
        (setf (get 'desc ,sym) ,desc)
+       (setf (get 'argnames ,sym) ,argnames)
        (push ,sym ,prompts))))
 
 (defmacro defdefault ((prompts) &body body)
   `(defprompt ("default" "parse remaining commands" ,prompts)
      ,@body))
 
+(defun nextname (prompts)
+  (let ((args (get 'anames prompts)))
+    (if args
+        (car args)
+        "ARG")))
+  
 (defun show-help (prompts)
   (princ "Usage:")
   (terpri)
@@ -96,6 +103,7 @@
                        when (and (>= (length cmd) l)
                                  (string= cmd (get 'name prompt)))
                        return (progn
+                                (setf (get 'anames prompts) (get 'argnames prompt))
                                 (setf (get 'args prompts) args)
                                 (funcall (get 'handler prompt) (subseq command (length (get 'name prompt))) prompts command)
                                 t))))
@@ -109,6 +117,7 @@
   (setf (get 'prompt prompts) str)
   (setf (get 'done prompts) nil)
   (setf (get 'result prompts) nil)
+  (setf (get 'anames prompts) nil)
   (setf (get 'helpname prompts) helpname)
   (loop for command = "" then (read-line)
      until (or (interpret-command command prompts)

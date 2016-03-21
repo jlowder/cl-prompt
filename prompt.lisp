@@ -23,13 +23,12 @@
                  (labels ((end-prompt ()
                             (setf (get 'done prompts) t))
                           (prompt-as (str)
-                            (loop 
-                               for response = '("")
-                               do
-                                 (princ str)
-                                 (force-output)
-                               until (> (length (car (setq response (split " " (read-line))))) 0)
-                               finally (return response)))
+                            (princ str)
+                            (force-output)
+                            (let ((r (parse-subargs (read-line))))
+                              (if (consp r)
+                                  r
+                                  (prompt-as str))))
                           (poparg1 ()
                             (loop
                                as arg = (car (get 'args prompts))
@@ -69,26 +68,28 @@
        unless (string= (get 'name prompt) "default")
      do (format t "~A: ~A~%" (get 'name prompt) (get 'desc prompt))))
 
+(defun parse-subargs (s)
+  (labels ((r1 (s)
+             (when (consp s)
+               (let ((f (car s)))
+                 (if (string= "\"" f)
+                     (r2 (cdr s) "")
+                     (cons f (r1 (cdr s)))))))
+           (r2 (s l)
+             (when (consp s)
+               (let ((f (car s)))
+                 (if (string= "\"" f)
+                     (cons (string-trim " " l) (r1 (cdr s)))
+                     (r2 (cdr s) (concatenate 'string l " " f)))))))
+    (remove-if #'(lambda (x) (string= "" x))
+               (r1 (split " "
+                          (regex-replace-all "\""
+                                             s
+                                             " \" "))))))
+  
 (defun parse-args (s)
   (let ((cmd (car (split " " s))))
-    (labels ((r1 (s)
-               (when (consp s)
-                 (let ((f (car s)))
-                   (if (string= "\"" f)
-                       (r2 (cdr s) "")
-                       (cons f (r1 (cdr s)))))))
-             (r2 (s l)
-               (when (consp s)
-                 (let ((f (car s)))
-                   (if (string= "\"" f)
-                       (cons (string-trim " " l) (r1 (cdr s)))
-                       (r2 (cdr s) (concatenate 'string l " " f)))))))
-      (values cmd 
-              (remove-if #'(lambda (x) (string= "" x))
-                         (r1 (split " "
-                                    (regex-replace-all "\""
-                                                       (subseq s (length cmd))
-                                                       " \" "))))))))
+    (values cmd (parse-subargs (subseq s (length cmd))))))
 
 (defun interpret-command (command prompts)
   (multiple-value-bind (cmd args) (parse-args command)

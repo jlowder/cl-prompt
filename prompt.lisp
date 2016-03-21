@@ -10,6 +10,7 @@
    :poparg
    :defprompt
    :defdefault
+   :command
    :prompt))
 
 (in-package :prompt)
